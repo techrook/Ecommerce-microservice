@@ -1,0 +1,177 @@
+version: '3.9'
+
+services:
+  # ==========================
+  # DATABASES & INFRASTRUCTURE
+  # ==========================
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123
+      POSTGRES_DB: ecommerce
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - ecommerce-net
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ecommerce-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - ecommerce-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ecommerce-net
+
+  # ==========================
+  # MICROSERVICES (stubs for now)
+  # ==========================
+  auth-service:
+    build: services/auth-service
+    container_name: auth-service
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/ecommerce
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - ecommerce-net
+
+  product-service:
+    build: services/product-service
+    container_name: product-service
+    ports:
+      - "3002:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/ecommerce
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+    networks:
+      - ecommerce-net
+
+  order-service:
+    build: services/order-service
+    container_name: order-service
+    ports:
+      - "3003:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/ecommerce
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+    networks:
+      - ecommerce-net
+
+  payment-service:
+    build: services/payment-service
+    container_name: payment-service
+    ports:
+      - "3004:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/ecommerce
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+    networks:
+      - ecommerce-net
+
+  user-service:
+    build: services/user-service
+    container_name: user-service
+    ports:
+      - "3007:3000"
+    environment:
+      - DATABASE_URL=postgres://postgres:123@postgres:5432/ecommerce
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - postgres
+      - kafka
+    networks:
+      - ecommerce-net
+
+  notification-service:
+    build: services/notification-service
+    container_name: notification-service
+    ports:
+      - "3005:3000"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - ecommerce-net
+
+  analytics-service:
+    build: services/analytics-service
+    container_name: analytics-service
+    ports:
+      - "3006:3000"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - ecommerce-net
+
+  # ==========================
+  # API GATEWAY
+  # ==========================
+  gateway:
+    image: nginx:latest
+    container_name: nginx-gateway
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+      - user-service 
+    networks:
+      - ecommerce-net
+
+# ==========================
+# NETWORK & VOLUMES
+# ==========================
+networks:
+  ecommerce-net:
+    driver: bridge
+
+volumes:
+  pgdata:
